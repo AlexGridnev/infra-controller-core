@@ -130,6 +130,22 @@ pub struct InstanceNetworkConfig {
     /// auto-resolve the instance's network interfaces from the host's
     /// HostInband network segments. Only valid for instances on zero-DPU
     /// hosts (well, no DPU, *or* DPU in NIC mode).
+    ///
+    /// It is also important to note that on the wire (request AND response),
+    /// `auto: true` only travels with `interfaces: []`, but internally some
+    /// other things are happening.
+    ///
+    /// On allocation/update, NICo resolves the empty interfaces: [] into
+    /// one entry per HostInband segment on the host, then stores the
+    /// fully-resolved config internally (allowing storage, status, IP
+    /// bookkeeping, config diffs, etc to all operate on real interfaces).
+    ///
+    /// Then, at the model <-> RPC boundary, the resolved interfaces are
+    /// stripped off to `[]`, so callers reading the instance config back
+    /// simply see what they originally sent (`auto: true` with no interfaces).
+    ///
+    /// The resolved per-interface details (IP, MAC, gateway, prefix) appear in
+    /// `Instance.status.network.interfaces` like usual.
     #[serde(default)]
     pub auto: bool,
 }
@@ -222,7 +238,35 @@ impl InstanceNetworkConfig {
         }
     }
 
-    /// Validates the network configuration
+    /// Returns this config as it should appear on the wire: for `auto`
+    /// configs, the resolved interfaces are stripped so external callers see
+    /// just their request (`{ auto: true, interfaces: [] }`). The fully-
+    /// resolved interfaces still drive `InstanceNetworkStatus` population
+    /// from the internal model. For non-auto configs, returns `self`
+    /// unchanged.
+    ///
+    /// This exists to keep the input config from the user represented
+    /// back to them as they sent it, and mask any internal interface
+    /// resolution that happened as a result of `auto`.
+    pub fn into_external_view(self) -> Self {
+        if self.auto {
+            Self {
+                interfaces: vec![],
+                auto: true,
+            }
+        } else {
+            self
+        }
+    }
+
+    /// Validates the network configuration.
+    ///
+    /// Note: this is also called on POST-resolution configs (i.e. after
+    /// `add_inband_interfaces_to_config` has expanded an `auto` request into
+    /// underlying interfaces), so it must not reject the combination
+    /// `auto: true` + non-empty interfaces here. The "auto must arrive with
+    /// empty interfaces" rule is enforced in RPC <-> model conversion, which
+    /// only runs on user input.
     pub fn validate(&self, allow_instance_vf: bool) -> Result<(), ConfigValidationError> {
         if !allow_instance_vf
             && self
@@ -483,11 +527,11 @@ fn validate_virtual_function_ids_and_get_allocation_method(
 impl TryFrom<rpc::InstanceNetworkConfig> for InstanceNetworkConfig {
     type Error = RpcDataConversionError;
 
-    fn try_from(config: rpc::InstanceNetworkConfig) -> Result<Self, Self::Error> {
+    fn try_from(network_config: rpc::InstanceNetworkConfig) -> Result<Self, Self::Error> {
         // try_from for interfaces:
-        let auto = config.auto;
+        let auto = network_config.auto;
 
-        if auto && !config.interfaces.is_empty() {
+        if auto && !network_config.interfaces.is_empty() {
             return Err(RpcDataConversionError::InvalidArgument(
                 "InstanceNetworkConfig.auto cannot be combined with explicit interfaces"
                     .to_string(),
@@ -495,13 +539,13 @@ impl TryFrom<rpc::InstanceNetworkConfig> for InstanceNetworkConfig {
         }
 
         let mut assigned_vfs_map: HashMap<(Option<String>, u32), u8> = HashMap::default();
-        let mut interfaces = Vec::with_capacity(config.interfaces.len());
+        let mut interfaces = Vec::with_capacity(network_config.interfaces.len());
         // Either all virtual ids for VF are None, or all should have some valid values.
         // virtual_function_id can not be repeated.
 
         let allocation_type =
-            validate_virtual_function_ids_and_get_allocation_method(&config.interfaces)?;
-        for iface in config.interfaces.into_iter() {
+            validate_virtual_function_ids_and_get_allocation_method(&network_config.interfaces)?;
+        for iface in network_config.interfaces.into_iter() {
             let rpc_iface_type = rpc::InterfaceFunctionType::try_from(iface.function_type)
                 .map_err(|_| {
                     RpcDataConversionError::InvalidInterfaceFunctionType(iface.function_type)
@@ -648,10 +692,16 @@ impl TryFrom<rpc::InstanceNetworkConfig> for InstanceNetworkConfig {
 impl TryFrom<InstanceNetworkConfig> for rpc::InstanceNetworkConfig {
     type Error = RpcDataConversionError;
 
-    fn try_from(config: InstanceNetworkConfig) -> Result<rpc::InstanceNetworkConfig, Self::Error> {
-        let auto = config.auto;
-        let mut interfaces = Vec::with_capacity(config.interfaces.len());
-        for iface in config.interfaces.into_iter() {
+    fn try_from(
+        network_config: InstanceNetworkConfig,
+    ) -> Result<rpc::InstanceNetworkConfig, Self::Error> {
+        // This is where we prep the interface for "external" viewing,
+        // stripping resolved interfaces in the case of an auto config,
+        // but leaving them untouched otherwise.
+        let auto = network_config.auto;
+
+        let mut interfaces = Vec::with_capacity(network_config.interfaces.len());
+        for iface in network_config.interfaces.into_iter() {
             let function_type = iface.function_id.function_type();
 
             // Update network segment id based on network details.
