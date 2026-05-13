@@ -179,23 +179,37 @@ pub(crate) async fn set_primary_dpu(
 
     let mut txn = api.txn_begin().await?;
 
+    // Normalize any legacy over-allocation before changing the primary flag so
+    // the current active DHCP address is the address reconciliation can move.
+    let pre_reconcile_changed =
+        db::machine_interface::reconcile_admin_addresses_for_host(&mut txn, &host_machine_id)
+            .await?;
+
     // update the primary interface
     db::machine_interface::set_primary_interface(&current_primary_interface_id, false, &mut txn)
         .await?;
     db::machine_interface::set_primary_interface(&new_primary_interface.id, true, &mut txn).await?;
 
-    // increment the network config version so that the DPUs pick up their new config
-    let (network_config, network_config_version) =
-        db::machine::get_network_config(txn.as_pgconn(), &host_machine_id)
-            .await?
-            .take();
-    db::machine::try_update_network_config(
-        &mut txn,
-        &host_machine_id,
-        network_config_version,
-        &network_config,
-    )
-    .await?;
+    // Reconcile admin address ownership after the primary flag moves.
+    let reconcile_changed =
+        db::machine_interface::reconcile_admin_addresses_for_host(&mut txn, &host_machine_id)
+            .await?;
+
+    // Increment the managed-host network config version only when the
+    // active admin config changed.
+    if pre_reconcile_changed || reconcile_changed {
+        let (network_config, network_config_version) =
+            db::machine::get_network_config(txn.as_pgconn(), &host_machine_id)
+                .await?
+                .take();
+        db::machine::try_update_network_config(
+            &mut txn,
+            &host_machine_id,
+            network_config_version,
+            &network_config,
+        )
+        .await?;
+    }
 
     // if there is an instance, update the instances network config version so the DPUs pick up the new config
     if let Some(instance) = db::instance::find_by_machine_id(&mut txn, &host_machine_id).await? {
