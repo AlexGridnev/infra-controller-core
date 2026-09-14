@@ -2450,6 +2450,7 @@ dependencies = [
  "carbide-api-model",
  "carbide-ipmi",
  "carbide-network",
+ "carbide-rms-mock",
  "carbide-rpc",
  "carbide-test-support",
  "carbide-tls",
@@ -2949,6 +2950,19 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "carbide-rms-mock"
+version = "0.0.1"
+dependencies = [
+ "axum",
+ "librms",
+ "mac_address",
+ "serde",
+ "tokio",
+ "tonic",
+ "tracing",
 ]
 
 [[package]]
