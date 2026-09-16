@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 [package]
-name = "carbide-ufm-mock"
+name = "carbide-mat-protocol-gateway"
 version = "0.0.1"
 edition.workspace = true
 license.workspace = true
@@ -23,26 +23,26 @@ authors.workspace = true
 repository.workspace = true
 
 [lib]
-name = "ufm_mock"
+name = "mat_protocol_gateway"
 
 [[bin]]
-name = "ufm-mock"
+name = "mat-protocol-gateway"
 path = "src/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
 
 [dependencies]
 axum = { workspace = true }
-axum-server = { features = ["tls-rustls"], workspace = true }
-carbide-axum-utils = { path = "../axum-utils" }
+carbide-ufm-mock = { path = "../ufm-mock" }
 carbide-utils = { path = "../utils" }
 clap = { features = ["derive"], workspace = true }
 duration-str = { workspace = true }
 eyre = { workspace = true }
-figment = { features = ["toml"], workspace = true }
-futures = { workspace = true }
+figment = { features = ["env", "toml"], workspace = true }
 metrics-endpoint = { path = "../metrics-endpoint" }
-opentelemetry = { workspace = true }
 reqwest = { default-features = false, features = ["json", "rustls"], workspace = true }
-rustls = { workspace = true }
 serde = { features = ["derive"], workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -53,6 +53,10 @@ tracing-subscriber = { features = ["env-filter"], workspace = true }
 url = { features = ["serde"], workspace = true }
 
 [dev-dependencies]
+carbide-test-support = { path = "../test-support" }
+figment = { features = ["test"], workspace = true }
+rcgen = { workspace = true }
+tempfile = { workspace = true }
 tower = { features = ["util"], workspace = true }
 
 [lints]
