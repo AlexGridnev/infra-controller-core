@@ -3031,6 +3031,7 @@ version = "0.0.1"
 dependencies = [
  "axum",
  "carbide-test-support",
+ "eyre",
  "librms",
  "mac_address",
  "serde",
