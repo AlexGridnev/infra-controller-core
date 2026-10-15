@@ -1753,6 +1753,8 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tonic",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
