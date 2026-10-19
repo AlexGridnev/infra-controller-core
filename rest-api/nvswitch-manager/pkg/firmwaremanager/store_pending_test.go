@@ -40,8 +40,12 @@ func TestInMemoryUpdateStore_GetPendingUpdates(t *testing.T) {
 		require.NoError(t, store.Save(ctx, &updates[i]))
 	}
 
-	// Save assigns UpdatedAt itself; check persisted timestamps rather than
-	// assuming caller-supplied times survive or relying on sleeps.
+	// Save overwrites UpdatedAt, so set the stored fixture timestamps explicitly.
+	store.mu.Lock()
+	store.updates[oldestActiveID].UpdatedAt = createdAt.Add(time.Minute)
+	store.updates[newestActiveID].UpdatedAt = createdAt.Add(2 * time.Minute)
+	store.mu.Unlock()
+
 	oldestActive, err := store.Get(ctx, oldestActiveID)
 	require.NoError(t, err)
 	newestActive, err := store.Get(ctx, newestActiveID)

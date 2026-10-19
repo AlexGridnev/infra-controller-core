@@ -73,6 +73,15 @@ func TestRedfishClient_GetTaskURI(t *testing.T) {
 			wantErr:     "nil response",
 		},
 		{
+			name:     "empty body falls back to Location",
+			location: "/redfish/v1/TaskService/TaskMonitors/99",
+			wantURI:  "/redfish/v1/TaskService/TaskMonitors/99",
+		},
+		{
+			name:            "empty body without Location errors",
+			wantSyntaxError: true,
+		},
+		{
 			name:            "malformed JSON errors despite Location",
 			body:            `{"@odata.id":`,
 			location:        "/redfish/v1/TaskService/TaskMonitors/99",
