@@ -13,6 +13,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestIsTransientError(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		want   bool
+		reason string
+	}{
+		{
+			name:   "nil error",
+			err:    nil,
+			want:   false,
+			reason: "absence of an error must not be classified as transient",
+		},
+		{
+			name:   "permanent authentication error",
+			err:    errors.New("authentication failed: invalid credentials"),
+			want:   false,
+			reason: "an authentication failure must remain permanent when no transient pattern matches",
+		},
+		{
+			name:   "embedded mixed-case late transient pattern",
+			err:    errors.New("firmware upload failed: unexpected EoF while reading response"),
+			want:   true,
+			reason: "a transient pattern late in the list must match inside a contextual message regardless of case",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isTransientError(tt.err), tt.reason)
+		})
+	}
+}
+
 func TestIsReachable(t *testing.T) {
 	tests := []struct {
 		name    string
